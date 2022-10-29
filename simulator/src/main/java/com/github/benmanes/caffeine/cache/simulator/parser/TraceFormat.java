@@ -19,6 +19,10 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Sets.toImmutableEnumSet;
 import static java.util.Locale.US;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -112,11 +116,20 @@ public enum TraceFormat {
       }
 
       private ImmutableList<TraceReader> readers() {
-        return filePaths.stream().map(path -> {
+       var r = filePaths.stream().map(path -> {
           List<String> parts = Splitter.on(':').limit(2).splitToList(path);
           TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
-          return format.factory.apply(Iterables.getLast(parts));
-        }).collect(toImmutableList());
+          var file = Paths.get(Iterables.getLast(parts));
+          if (Files.isDirectory(file)) {
+            return Arrays.stream(file.toFile().listFiles())
+                    .map(File::getPath)
+                    .map(p -> format.factory.apply(p))
+                    .collect(toImmutableList());
+          } else {
+            return List.of(format.factory.apply(Iterables.getLast(parts)));
+          }
+        });
+        return r.flatMap(List::stream).collect(toImmutableList());
       }
     };
   }
