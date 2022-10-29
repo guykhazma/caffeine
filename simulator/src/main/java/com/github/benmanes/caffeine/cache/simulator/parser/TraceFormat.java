@@ -116,7 +116,7 @@ public enum TraceFormat {
       }
 
       private ImmutableList<TraceReader> readers() {
-       var r = filePaths.stream().map(path -> {
+       return filePaths.stream().map(path -> {
           List<String> parts = Splitter.on(':').limit(2).splitToList(path);
           TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
           var file = Paths.get(Iterables.getLast(parts));
@@ -128,8 +128,7 @@ public enum TraceFormat {
           } else {
             return List.of(format.factory.apply(Iterables.getLast(parts)));
           }
-        });
-        return r.flatMap(List::stream).collect(toImmutableList());
+        }).flatMap(List::stream).collect(toImmutableList());
       }
     };
   }
