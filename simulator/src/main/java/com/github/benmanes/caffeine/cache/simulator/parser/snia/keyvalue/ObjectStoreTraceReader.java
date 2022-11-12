@@ -61,19 +61,17 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
               return Stream.empty();
           }
           // generate access requests according to block sizes
-          // find the relevant block numbers
           long startBlock = Math.floorDiv(start, blockSize);
           long currBlockID = startBlock;
           long curr = startBlock * blockSize;
           List<AccessEvent> accessEventList = new ArrayList<>();
-          // generate access for the middle blocks
           while (curr + blockSize <= end) {
             long blockKey = getBlockKey(key, currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID +=1;
             curr += blockSize;
           }
-          // generate access for first block
+          // generate access for last block
           if (curr < end) {
               long blockKey = getBlockKey(key, currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
