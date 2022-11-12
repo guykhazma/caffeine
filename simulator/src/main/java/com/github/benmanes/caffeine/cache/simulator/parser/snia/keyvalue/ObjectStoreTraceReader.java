@@ -17,15 +17,16 @@ package com.github.benmanes.caffeine.cache.simulator.parser.snia.keyvalue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.math.BigInteger;
 import java.util.Set;
 import java.util.stream.Stream;
 
 import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
+import com.google.common.hash.Hashing;
 import com.google.common.primitives.Ints;
 
 /**
@@ -52,7 +53,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
         .map(line -> line.split(" "))
         .filter(array -> array[1].equals("REST.GET.OBJECT"))
         .flatMap(array -> {
-          long key = new BigInteger(array[2], 16).longValue();
+          String key = array[2];
           long start = Long.parseLong(array[4]);
           long end = Long.parseLong(array[5]);
           int  weight = Ints.saturatedCast(end - start);
@@ -67,34 +68,24 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           List<AccessEvent> accessEventList = new ArrayList<>();
           // generate access for the middle blocks
           while (curr + blockSize <= end) {
-            // generate key which depends on the block id
-            long blockKey = ((currBlockID) << 31) | Long.hashCode(key);// hash(getBlockKey(key, currBlockID));
+            long blockKey = getBlockKey(key, currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID +=1;
             curr += blockSize;
           }
           // generate access for first block
           if (curr < end) {
-              // generate key which depends on the block id
-              long blockKey = ((currBlockID) << 31) | Long.hashCode(key);// hash(getBlockKey(key, currBlockID));
+              long blockKey = getBlockKey(key, currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
           }
           return accessEventList.stream();
         });
   }
 
-  static String getBlockKey(String objectKey, long blockID) {
-      return objectKey + "-" + blockID;
-  }
-
-  // taken from https://stackoverflow.com/questions/1660501/what-is-a-good-64bit-hash-function-in-java-for-textual-strings
-  static long hash(String string) {
-    long h = 1125899906842597L; // prime
-    int len = string.length();
-
-    for (int i = 0; i < len; i++) {
-        h = 31*h + string.charAt(i);
-    }
-    return h;
+  // generate key which depends on the block id
+  static long getBlockKey(String objectKey, long blockID) {
+      return Hashing.sha256()
+              .hashString(objectKey + "-" + blockID, StandardCharsets.UTF_8)
+              .asLong();
   }
 }
