@@ -36,7 +36,7 @@ import com.google.common.primitives.Ints;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 public final class ObjectStoreTraceReader extends TextTraceReader {
-  int blockSize = 4 * ((int)(Math.pow(2, 20))); // 4MB
+  int blockSize = 4 * (int) Math.pow(2, 20); // 4MB
 
   public ObjectStoreTraceReader(String filePath) {
     super(filePath);

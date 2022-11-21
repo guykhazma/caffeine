@@ -21,12 +21,12 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.Set;
 
+import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
 import org.apache.commons.lang3.StringUtils;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
-import com.github.benmanes.caffeine.cache.simulator.membership.Membership;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -53,7 +53,7 @@ public final class MeClockPolicy implements Policy {
   final long maximumSize;
   final boolean weighted;
   final Node sentinel;
-  final Membership doorkeeper;
+  final DeleteBloomFilter doorkeeper;
 
   long currentSize;
 
@@ -68,7 +68,8 @@ public final class MeClockPolicy implements Policy {
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
-    this.doorkeeper = settings.membership().filter().create(config);
+    // TODO: change to get params from policy
+    this.doorkeeper = new DeleteBloomFilter(5, 1.2, 8);
   }
 
   /**
@@ -108,7 +109,7 @@ public final class MeClockPolicy implements Policy {
       currentSize += (weight - old.weight);
       old.weight = weight;
 
-      doorkeeper.put(key);
+      doorkeeper.add(key);
       policy.onAccess(old, policyStats);
       evict(old);
     }
@@ -119,14 +120,14 @@ public final class MeClockPolicy implements Policy {
     if (currentSize > maximumSize) {
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
-          // TODO: dookeeper.delete(candidate.key);
+          doorkeeper.delete(candidate.key);
           evictEntry(candidate);
           continue;
         }
 
         Node victim = policy.findVictim(sentinel, policyStats);
-        if (doorkeeper.mightContain(victim.key)) { // recycle
-          // TODO: dookeeper.delete(victim.key);
+        if (doorkeeper.mayContain(victim.key)) { // recycle
+          doorkeeper.delete(victim.key);
           victim.moveToTail();
         } else { // replace
           evictEntry(victim);
