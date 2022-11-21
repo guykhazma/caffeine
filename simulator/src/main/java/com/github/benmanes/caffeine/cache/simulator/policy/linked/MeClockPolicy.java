@@ -16,13 +16,11 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-import static java.util.Locale.US;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.Set;
 
 import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
-import org.apache.commons.lang3.StringUtils;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
@@ -63,13 +61,13 @@ public final class MeClockPolicy implements Policy {
     this.admittor = admission.from(config, policyStats);
     this.weighted = characteristics.contains(WEIGHTED);
 
-    BasicSettings settings = new BasicSettings(config);
+    MeClockPolicy.MeClockSettings settings = new MeClockPolicy.MeClockSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
-    // TODO: change to get params from policy
-    this.doorkeeper = new DeleteBloomFilter(5, 1.2, 8);
+    // get the bloom filter parameters
+    this.doorkeeper = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
   }
 
   /**
@@ -162,7 +160,7 @@ public final class MeClockPolicy implements Policy {
     };
 
     public String label() {
-      return "linked." + StringUtils.capitalize(name().toLowerCase(US));
+      return "linked.meclock";
     }
 
     /**
@@ -237,6 +235,21 @@ public final class MeClockPolicy implements Policy {
           .add("weight", weight)
           .add("marked", marked)
           .toString();
+    }
+  }
+
+  static final class MeClockSettings extends BasicSettings {
+    public MeClockSettings(Config config) {
+      super(config);
+    }
+    public int numHashFunctions() {
+      return config().getInt("me-clock.num-hash-functions");
+    }
+    public double bitsPerKey() {
+      return config().getDouble("me-clock.bits-per-key");
+    }
+    public int numElements() {
+      return config().getInt("me-clock.num-elements");
     }
   }
 }

@@ -18,11 +18,11 @@ public class DeleteBloomFilter implements Filter {
         return data.length * 64L;
     }
 
-    public DeleteBloomFilter(int entryCount, double bitsPerKey, int k) {
-        entryCount = Math.max(1, entryCount);
+    public DeleteBloomFilter(int numElements, double bitsPerKey, int k) {
+        numElements = Math.max(1, numElements);
         this.k = k;
         this.seed = Hash.randomSeed();
-        long bits = (long) (entryCount * bitsPerKey);
+        long bits = (long) (numElements * bitsPerKey);
         arraySize = (int) ((bits + 63) / 64);
         data = new long[arraySize];
     }
@@ -72,6 +72,5 @@ public class DeleteBloomFilter implements Filter {
             a += b;
         }
     }
-
 }
 
