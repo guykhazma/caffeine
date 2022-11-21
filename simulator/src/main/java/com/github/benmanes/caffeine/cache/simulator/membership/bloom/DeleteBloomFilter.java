@@ -19,9 +19,14 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public DeleteBloomFilter(int numElements, double bitsPerKey, int k) {
+        this(numElements, bitsPerKey, k, Hash.randomSeed());
+    }
+
+    // constructor fixed seed for tests
+    public DeleteBloomFilter(int numElements, double bitsPerKey, int k, long seed) {
         numElements = Math.max(1, numElements);
         this.k = k;
-        this.seed = Hash.randomSeed();
+        this.seed = seed;
         long bits = (long) (numElements * bitsPerKey);
         arraySize = (int) ((bits + 63) / 64);
         data = new long[arraySize];
