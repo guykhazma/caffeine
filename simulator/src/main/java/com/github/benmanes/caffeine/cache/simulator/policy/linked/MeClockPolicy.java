@@ -26,6 +26,7 @@ import org.apache.commons.lang3.StringUtils;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.membership.Membership;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -44,7 +45,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @PolicySpec(characteristics = WEIGHTED)
-public final class LinkedPolicy2 implements Policy {
+public final class MeClockPolicy implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
   final EvictionPolicy policy;
@@ -52,10 +53,11 @@ public final class LinkedPolicy2 implements Policy {
   final long maximumSize;
   final boolean weighted;
   final Node sentinel;
+  final Membership doorkeeper;
 
   long currentSize;
 
-  public LinkedPolicy2(Config config, Set<Characteristic> characteristics,
+  public MeClockPolicy(Config config, Set<Characteristic> characteristics,
       Admission admission, EvictionPolicy policy) {
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.admittor = admission.from(config, policyStats);
@@ -66,6 +68,7 @@ public final class LinkedPolicy2 implements Policy {
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
+    this.doorkeeper = settings.membership().filter().create(config);
   }
 
   /**
@@ -74,7 +77,7 @@ public final class LinkedPolicy2 implements Policy {
   public static Set<Policy> policies(Config config,
       Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
-    return settings.admission().stream().map(admission -> new LinkedPolicy2(config, characteristics, admission, policy))
+    return settings.admission().stream().map(admission -> new MeClockPolicy(config, characteristics, admission, policy))
         .collect(toUnmodifiableSet());
   }
 
@@ -89,7 +92,7 @@ public final class LinkedPolicy2 implements Policy {
     final long key = event.key();
     Node old = data.get(key);
     admittor.record(key);
-    if (old == null) {
+    if (old == null) { // add
       policyStats.recordWeightedMiss(weight);
       if (weight > maximumSize) {
         policyStats.recordOperation();
@@ -100,11 +103,12 @@ public final class LinkedPolicy2 implements Policy {
       currentSize += node.weight;
       node.appendToTail();
       evict(node);
-    } else {
+    } else { // hit
       policyStats.recordWeightedHit(weight);
       currentSize += (weight - old.weight);
       old.weight = weight;
 
+      doorkeeper.put(key);
       policy.onAccess(old, policyStats);
       evict(old);
     }
@@ -115,16 +119,17 @@ public final class LinkedPolicy2 implements Policy {
     if (currentSize > maximumSize) {
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
+          // TODO: dookeeper.delete(candidate.key);
           evictEntry(candidate);
           continue;
         }
 
         Node victim = policy.findVictim(sentinel, policyStats);
-        boolean admit = admittor.admit(candidate.key, victim.key);
-        if (admit) {
+        if (doorkeeper.mightContain(victim.key)) { // recycle
+          // TODO: dookeeper.delete(victim.key);
+          victim.moveToTail();
+        } else { // replace
           evictEntry(victim);
-        } else {
-          evictEntry(candidate);
         }
       }
     } else {
@@ -141,77 +146,11 @@ public final class LinkedPolicy2 implements Policy {
 
   /** The replacement policy. */
   public enum EvictionPolicy {
-
-    /** Evicts entries based on insertion order. */
-    FIFO {
+    ME_CLOCK {
       @Override
       void onAccess(Node node, PolicyStats policyStats) {
         policyStats.recordOperation();
         // do nothing
-      }
-
-      @Override
-      Node findVictim(Node sentinel, PolicyStats policyStats) {
-        policyStats.recordOperation();
-        return sentinel.next;
-      }
-    },
-
-    /**
-     * Evicts entries based on insertion order, but gives an entry a "second chance"
-     * if it has been
-     * requested recently.
-     */
-    CLOCK {
-      @Override
-      void onAccess(Node node, PolicyStats policyStats) {
-        policyStats.recordOperation();
-        node.marked = true;
-      }
-
-      @Override
-      Node findVictim(Node sentinel, PolicyStats policyStats) {
-        for (;;) {
-          policyStats.recordOperation();
-          Node node = sentinel.next;
-          if (node.marked) {
-            node.moveToTail();
-            node.marked = false;
-          } else {
-            return node;
-          }
-        }
-      }
-    },
-
-    /**
-     * Evicts entries based on how recently they are used, with the most recent
-     * evicted first.
-     */
-    MRU {
-      @Override
-      void onAccess(Node node, PolicyStats policyStats) {
-        policyStats.recordOperation();
-        node.moveToTail();
-      }
-
-      @Override
-      Node findVictim(Node sentinel, PolicyStats policyStats) {
-        policyStats.recordOperation();
-        // Skip over the added entry
-        return sentinel.prev.prev;
-      }
-    },
-
-    /**
-     * Evicts entries based on how recently they are used, with the least recent
-     * evicted first.
-     */
-    LRU {
-      @Override
-      void onAccess(Node node, PolicyStats policyStats) {
-        policyStats.recordOperation();
-        node.moveToTail();
       }
 
       @Override
