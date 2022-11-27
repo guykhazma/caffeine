@@ -162,7 +162,7 @@ public final class Registry {
     });
     Stream.of(FrequentlyUsedPolicy.EvictionPolicy.values()).forEach(priority -> {
       registerMany(priority.label(), FrequentlyUsedPolicy.class,
-          config -> FrequentlyUsedPolicy.policies(config, priority));
+          config -> FrequentlyUsedPolicy.policies(config, characteristics, priority));
     });
     registerMany(S4LruPolicy.class, S4LruPolicy::policies);
     register(MultiQueuePolicy.class, MultiQueuePolicy::new);

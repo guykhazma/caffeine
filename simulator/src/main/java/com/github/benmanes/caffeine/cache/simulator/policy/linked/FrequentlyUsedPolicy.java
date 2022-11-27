@@ -15,6 +15,7 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 import static java.util.Locale.US;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toUnmodifiableSet;
@@ -26,8 +27,9 @@ import org.apache.commons.lang3.StringUtils;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
@@ -41,15 +43,19 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
+@PolicySpec(characteristics = WEIGHTED)
+public final class FrequentlyUsedPolicy implements Policy {
   final PolicyStats policyStats;
   final Long2ObjectMap<Node> data;
   final EvictionPolicy policy;
   final FrequencyNode freq0;
   final Admittor admittor;
-  final int maximumSize;
+  final long maximumSize;
+  final boolean weighted;
 
-  public FrequentlyUsedPolicy(Admission admission, EvictionPolicy policy, Config config) {
+  long currentSize;
+
+  public FrequentlyUsedPolicy(Admission admission, Set<Characteristic> characteristics, EvictionPolicy policy, Config config) {
     BasicSettings settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.maximumSize = Math.toIntExact(settings.maximumSize());
@@ -57,13 +63,14 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.policy = requireNonNull(policy);
     this.freq0 = new FrequencyNode();
+    this.weighted = characteristics.contains(WEIGHTED);
   }
 
   /** Returns all variations of this policy based on the configuration parameters. */
-  public static Set<Policy> policies(Config config, EvictionPolicy policy) {
+  public static Set<Policy> policies(Config config, Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
     return settings.admission().stream().map(admission ->
-      new FrequentlyUsedPolicy(admission, policy, config)
+      new FrequentlyUsedPolicy(admission,characteristics, policy, config)
     ).collect(toUnmodifiableSet());
   }
 
@@ -73,21 +80,30 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
   }
 
   @Override
-  public void record(long key) {
-    policyStats.recordOperation();
-    Node node = data.get(key);
+  public void record(AccessEvent event) {
+    final int weight = weighted ? event.weight() : 1;
+    final long key = event.key();
+    Node old = data.get(key);
     admittor.record(key);
-    if (node == null) {
-      onMiss(key);
+    if (old == null) {
+      policyStats.recordWeightedMiss(weight);
+      if (weight > maximumSize) {
+        policyStats.recordOperation();
+        return;
+      }
+      currentSize += weight;
+      onMiss(key, weight);
     } else {
-      onHit(node);
+      policyStats.recordWeightedHit(weight);
+      currentSize += (weight - old.weight);
+      old.weight = weight;
+      onHit(old);
     }
   }
 
   /** Moves the entry to the next higher frequency list, creating it if necessary. */
   private void onHit(Node node) {
-    policyStats.recordHit();
-
+    policyStats.recordOperation();
     int newCount = node.freq.count + 1;
     FrequencyNode freqN = (node.freq.next.count == newCount)
         ? node.freq.next
@@ -98,14 +114,16 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     }
     node.freq = freqN;
     node.append();
+    evict(node);
   }
 
   /** Adds the entry, creating an initial frequency list of 1 if necessary, and evicts if needed. */
-  private void onMiss(long key) {
+  private void onMiss(long key, int weight) {
+    policyStats.recordOperation();
     FrequencyNode freq1 = (freq0.next.count == 1)
         ? freq0.next
         : new FrequencyNode(1, freq0);
-    Node node = new Node(key, freq1);
+    Node node = new Node(key, freq1, weight);
     policyStats.recordMiss();
     data.put(key, node);
     node.append();
@@ -114,15 +132,22 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
 
   /** Evicts while the map exceeds the maximum capacity. */
   private void evict(Node candidate) {
-    if (data.size() > maximumSize) {
-      Node victim = nextVictim(candidate);
-      boolean admit = admittor.admit(candidate.key, victim.key);
-      if (admit) {
-        evictEntry(victim);
-      } else {
-        evictEntry(candidate);
+    if (currentSize > maximumSize) {
+      while (currentSize > maximumSize) {
+        if (candidate.weight > maximumSize) {
+          evictEntry(candidate);
+          continue;
+        }
+        Node victim = nextVictim(candidate);
+        boolean admit = admittor.admit(candidate.key, victim.key);
+        if (admit) {
+          evictEntry(victim);
+        } else {
+          evictEntry(candidate);
+        }
       }
-      policyStats.recordEviction();
+    } else {
+      policyStats.recordOperation();
     }
   }
 
@@ -132,6 +157,7 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
    * entries having a high frequency from the distant past.
    */
   Node nextVictim(Node candidate) {
+    policyStats.recordOperation();
     if (policy == EvictionPolicy.MFU) {
       // highest, never the candidate
       return freq0.prev.nextNode.next;
@@ -149,6 +175,8 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
 
   /** Removes the entry. */
   private void evictEntry(Node node) {
+    policyStats.recordEviction();
+    currentSize -= node.weight;
     data.remove(node.key);
     node.remove();
     if (node.freq.isEmpty()) {
@@ -214,19 +242,23 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     FrequencyNode freq;
     Node prev;
     Node next;
+    int weight;
 
+    // only use for frequency, weight is ignored
     public Node(FrequencyNode freq) {
       this.key = Long.MIN_VALUE;
       this.freq = freq;
       this.prev = this;
       this.next = this;
+      this.weight = -1;
     }
 
-    public Node(long key, FrequencyNode freq) {
+    public Node(long key, FrequencyNode freq, int weight) {
       this.next = null;
       this.prev = null;
       this.freq = freq;
       this.key = key;
+      this.weight = weight;
     }
 
     /** Appends the node to the tail of the list. */
@@ -248,6 +280,7 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("key", key)
+          .add("weight", weight)
           .add("freq", freq)
           .toString();
     }
