@@ -12,6 +12,8 @@ public class DeleteBloomFilter implements Filter {
     private final long seed;
     private final int arraySize;
     private final long[] data;
+    // the threshold to determine if an element is in the bloom filter
+    private final int existThreshold;
 
     @Override
     public long getBitCount() {
@@ -19,13 +21,14 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public DeleteBloomFilter(int numElements, double bitsPerKey, int k) {
-        this(numElements, bitsPerKey, k, Hash.randomSeed());
+        this(numElements, bitsPerKey, k, k / 2 + 1, Hash.randomSeed());
     }
 
     // constructor fixed seed for tests
-    public DeleteBloomFilter(int numElements, double bitsPerKey, int k, long seed) {
+    public DeleteBloomFilter(int numElements, double bitsPerKey, int k, int existThreshold, long seed) {
         numElements = Math.max(1, numElements);
         this.k = k;
+        this.existThreshold = existThreshold;
         this.seed = seed;
         long bits = (long) (numElements * bitsPerKey);
         arraySize = (int) ((bits + 63) / 64);
@@ -61,7 +64,7 @@ public class DeleteBloomFilter implements Filter {
             a += b;
         }
         // an element is assumed to be recorded if at least half of the bits are set to 1
-        if (numHits > k / 2.0) {
+        if (numHits > this.existThreshold) {
             return true;
         }
         return false;

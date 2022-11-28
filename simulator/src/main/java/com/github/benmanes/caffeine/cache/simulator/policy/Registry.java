@@ -48,6 +48,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.irr.LirsPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.FrequentlyUsedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.LinkedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.MeClockPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.linked.MeClockPolicyScanResistant;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
@@ -159,6 +160,10 @@ public final class Registry {
     Stream.of(MeClockPolicy.EvictionPolicy.values()).forEach(priority -> {
       registerMany(priority.label(), MeClockPolicy.class,
           config -> MeClockPolicy.policies(config, characteristics, priority));
+    });
+    Stream.of(MeClockPolicyScanResistant.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), MeClockPolicyScanResistant.class,
+              config -> MeClockPolicyScanResistant.policies(config, characteristics, priority));
     });
     Stream.of(FrequentlyUsedPolicy.EvictionPolicy.values()).forEach(priority -> {
       registerMany(priority.label(), FrequentlyUsedPolicy.class,

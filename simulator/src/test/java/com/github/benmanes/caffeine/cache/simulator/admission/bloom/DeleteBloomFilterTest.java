@@ -9,7 +9,7 @@ public class DeleteBloomFilterTest {
     @Test
     public void deleteBloomFilterTest() {
         // using fixed seed to make sure the deletion of one element affects the other
-        DeleteBloomFilter filter = new DeleteBloomFilter(8, 1.2, 8, 1042313130L);
+        DeleteBloomFilter filter = new DeleteBloomFilter(8, 1.2, 8, 4, 1042313130L);
         long elem = 123L;
         filter.add(elem);
         assertThat(filter.mayContain(elem)).isTrue();
