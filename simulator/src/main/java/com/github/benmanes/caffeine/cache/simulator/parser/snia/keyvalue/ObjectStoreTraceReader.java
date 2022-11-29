@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.parser.snia.keyvalue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,12 +54,19 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
         .map(line -> line.split(" "))
         .filter(array -> array[1].equals("REST.GET.OBJECT"))
         .flatMap(array -> {
-          String key = array[2];
+          long key = new BigInteger(array[2], 16).longValue();
+          int objSize = Ints.saturatedCast(Long.parseLong(array[3]));
           long start = Long.parseLong(array[4]);
           long end = Long.parseLong(array[5]);
           int  weight = Ints.saturatedCast(end - start);
+          // filter invalid events
           if (weight < 0) {
               return Stream.empty();
+          }
+
+          // if the object size is less than the block size then count it as the actual length
+          if (objSize < blockSize) {
+              return Stream.of(AccessEvent.forKeyAndWeight(key, objSize));
           }
           // generate access requests according to block sizes
           long startBlock = Math.floorDiv(start, blockSize);
@@ -66,15 +74,15 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           long curr = startBlock * blockSize;
           List<AccessEvent> accessEventList = new ArrayList<>();
           while (curr + blockSize <= end) {
-            long blockKey = getBlockKey(key, currBlockID);;
+            long blockKey = getBlockKey(array[2], currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID +=1;
             curr += blockSize;
           }
-          // generate access for last block
+          // generate access for last block according to the size of the block
           if (curr < end) {
-              long blockKey = getBlockKey(key, currBlockID);
-              accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
+              long blockKey = getBlockKey(array[2], currBlockID);
+              accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (end - curr)));
           }
           return accessEventList.stream();
         });
