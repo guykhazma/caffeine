@@ -118,7 +118,7 @@ public class DeleteBloomFilter implements Filter {
             a += b;
         }
         // an element is assumed to be recorded if at least half of the bits are set to 1
-        if (numHits > this.existThreshold) {
+        if (numHits >= this.existThreshold) {
             return true;
         }
         return false;

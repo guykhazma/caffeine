@@ -35,6 +35,7 @@ public class DeleteBloomFilterTest {
         DeleteBloomFilter filter = DeleteBloomFilter.getBFDFilter(8, 1.2, 8, 1042313130L);
         long elem = 123L;
         filter.add(elem);
+        assertThat(filter.mayContain(elem)).isTrue();
         long elem2 = 125L;
         filter.add(elem2);
         // delete an element - try multiple times to increase the chance it will be deleted

@@ -45,13 +45,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.irr.FrdPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.HillClimberFrdPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.IndicatorFrdPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.LirsPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.FrequentlyUsedPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.LinkedPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.MeClockPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.MeClockPolicyScanResistant;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.Cache2kPolicy;
@@ -157,14 +151,6 @@ public final class Registry {
       registerMany(priority.label(), LinkedPolicy.class,
           config -> LinkedPolicy.policies(config, characteristics, priority));
     });
-    Stream.of(MeClockPolicy.EvictionPolicy.values()).forEach(priority -> {
-      registerMany(priority.label(), MeClockPolicy.class,
-          config -> MeClockPolicy.policies(config, characteristics, priority));
-    });
-    Stream.of(MeClockPolicyScanResistant.EvictionPolicy.values()).forEach(priority -> {
-      registerMany(priority.label(), MeClockPolicyScanResistant.class,
-              config -> MeClockPolicyScanResistant.policies(config, characteristics, priority));
-    });
     Stream.of(FrequentlyUsedPolicy.EvictionPolicy.values()).forEach(priority -> {
       registerMany(priority.label(), FrequentlyUsedPolicy.class,
           config -> FrequentlyUsedPolicy.policies(config, characteristics, priority));
@@ -172,6 +158,20 @@ public final class Registry {
     registerMany(S4LruPolicy.class, S4LruPolicy::policies);
     register(MultiQueuePolicy.class, MultiQueuePolicy::new);
     registerMany(SegmentedLruPolicy.class, SegmentedLruPolicy::policies);
+    // Me-Clock
+    Stream.of(MeClockPolicy.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), MeClockPolicy.class,
+              config -> MeClockPolicy.policies(config, characteristics, priority));
+    });
+    Stream.of(MeClockPolicyScanResistant.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), MeClockPolicyScanResistant.class,
+              config -> MeClockPolicyScanResistant.policies(config, characteristics, priority));
+    });
+    // TBF
+    Stream.of(BFDPolicy.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), BFDPolicy.class,
+              config -> BFDPolicy.policies(config, characteristics, priority));
+    });
   }
 
   private void registerSampled() {

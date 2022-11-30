@@ -15,31 +15,29 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-import static java.util.stream.Collectors.toUnmodifiableSet;
-
-import java.util.Set;
-
-import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import static java.util.stream.Collectors.toUnmodifiableSet;
+
 /**
- * Me-Clock policy as described in the paper
+ * BFD policy from TBF paper
  */
 @PolicySpec(characteristics = WEIGHTED)
-public final class MeClockPolicy implements Policy {
+public final class BFDPolicy implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
   final EvictionPolicy policy;
@@ -51,19 +49,19 @@ public final class MeClockPolicy implements Policy {
 
   long currentSize;
 
-  public MeClockPolicy(Config config, Set<Characteristic> characteristics,
-      Admission admission, EvictionPolicy policy) {
+  public BFDPolicy(Config config, Set<Characteristic> characteristics,
+                   Admission admission, EvictionPolicy policy) {
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.admittor = admission.from(config, policyStats);
     this.weighted = characteristics.contains(WEIGHTED);
 
-    MeClockPolicy.MeClockSettings settings = new MeClockPolicy.MeClockSettings(config);
+    BFDPolicy.BFDSettings settings = new BFDPolicy.BFDSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
     // get the bloom filter parameters
-    this.doorkeeper = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.doorkeeper = DeleteBloomFilter.getBFDFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
   }
 
   /**
@@ -72,7 +70,7 @@ public final class MeClockPolicy implements Policy {
   public static Set<Policy> policies(Config config,
       Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
-    return settings.admission().stream().map(admission -> new MeClockPolicy(config, characteristics, admission, policy))
+    return settings.admission().stream().map(admission -> new BFDPolicy(config, characteristics, admission, policy))
         .collect(toUnmodifiableSet());
   }
 
@@ -156,7 +154,7 @@ public final class MeClockPolicy implements Policy {
     };
 
     public String label() {
-      return "linked.meclock";
+      return "linked.bfd";
     }
 
     /**
@@ -234,18 +232,18 @@ public final class MeClockPolicy implements Policy {
     }
   }
 
-  static final class MeClockSettings extends BasicSettings {
-    public MeClockSettings(Config config) {
+  static final class BFDSettings extends BasicSettings {
+    public BFDSettings(Config config) {
       super(config);
     }
     public int numHashFunctions() {
-      return config().getInt("me-clock.num-hash-functions");
+      return config().getInt("bfd.num-hash-functions");
     }
     public double bitsPerKey() {
-      return config().getDouble("me-clock.bits-per-key");
+      return config().getDouble("bfd.bits-per-key");
     }
     public long numElements() {
-      return config().getLong("me-clock.num-elements");
+      return config().getLong("bfd.num-elements");
     }
   }
 }
