@@ -66,9 +66,9 @@ public final class MeClockPolicyScanResistant implements Policy {
     this.sentinel = new Node();
     this.policy = policy;
     // bloom filter to keep track of historical entries
-    this.admissionBloomFilter = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.admissionBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
     // bloom filter to keep track of entries in cache
-    this.cacheBloomFilter = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.cacheBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
   }
 
   /**

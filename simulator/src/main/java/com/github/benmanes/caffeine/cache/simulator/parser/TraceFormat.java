@@ -117,7 +117,7 @@ public enum TraceFormat {
           List<String> parts = Splitter.on(':').limit(2).splitToList(path);
           TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
           TraceReader reader = format.factory.apply(Iterables.getLast(parts));
-          if (format.name() == "SNIA_OBJECT_STORE") {
+          if (format.name().equals("SNIA_OBJECT_STORE")) {
             System.out.println("Setting block size for object store to " + settings.trace().blockSize());
             ((ObjectStoreTraceReader) reader).setBlockSize(settings.trace().blockSize());
           }

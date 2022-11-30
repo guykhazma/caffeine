@@ -67,7 +67,7 @@ public final class MeClockPolicy implements Policy {
     this.sentinel = new Node();
     this.policy = policy;
     // get the bloom filter parameters
-    this.doorkeeper = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.doorkeeper = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
   }
 
   /**

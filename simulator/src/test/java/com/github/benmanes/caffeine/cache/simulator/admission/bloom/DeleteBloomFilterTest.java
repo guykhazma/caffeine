@@ -7,9 +7,9 @@ import static com.google.common.truth.Truth.assertThat;
 
 public class DeleteBloomFilterTest {
     @Test
-    public void deleteBloomFilterTest() {
+    public void MeClockDeleteBloomFilterTest() {
         // using fixed seed to make sure the deletion of one element affects the other
-        DeleteBloomFilter filter = new DeleteBloomFilter(8, 1.2, 8, 4, 1042313130L);
+        DeleteBloomFilter filter = DeleteBloomFilter.getMeClockDeleteBloomFilter(8, 1.2, 8, 1042313130L);
         long elem = 123L;
         filter.add(elem);
         assertThat(filter.mayContain(elem)).isTrue();
@@ -26,6 +26,21 @@ public class DeleteBloomFilterTest {
         filter.delete(elem2);
         assertThat(filter.mayContain(elem2)).isFalse();
         // because of the removal elem1 is also not present anymore
+        assertThat(filter.mayContain(elem)).isFalse();
+    }
+
+    // Test TBF BFD filter
+    @Test
+    public void BFDTest() {
+        DeleteBloomFilter filter = DeleteBloomFilter.getBFDFilter(8, 1.2, 8, 1042313130L);
+        long elem = 123L;
+        filter.add(elem);
+        long elem2 = 125L;
+        filter.add(elem2);
+        // delete an element - try multiple times to increase the chance it will be deleted
+        for (int i = 0; i < 8; i++) {
+            filter.delete(elem);
+        }
         assertThat(filter.mayContain(elem)).isFalse();
     }
 }
