@@ -118,6 +118,7 @@ public enum TraceFormat {
           TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
           TraceReader reader = format.factory.apply(Iterables.getLast(parts));
           if (format.name() == "SNIA_OBJECT_STORE") {
+            System.out.println("Setting block size for object store to " + settings.trace().blockSize());
             ((ObjectStoreTraceReader) reader).setBlockSize(settings.trace().blockSize());
           }
           return reader;
