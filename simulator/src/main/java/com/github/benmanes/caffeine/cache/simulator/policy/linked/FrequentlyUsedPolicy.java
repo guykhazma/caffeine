@@ -47,12 +47,12 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
   final EvictionPolicy policy;
   final FrequencyNode freq0;
   final Admittor admittor;
-  final int maximumSize;
+  final long maximumSize;
 
   public FrequentlyUsedPolicy(Admission admission, EvictionPolicy policy, Config config) {
     BasicSettings settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(admission.format(policy.label()));
-    this.maximumSize = Math.toIntExact(settings.maximumSize());
+    this.maximumSize = settings.maximumSize();
     this.admittor = admission.from(config, policyStats);
     this.data = new Long2ObjectOpenHashMap<>();
     this.policy = requireNonNull(policy);

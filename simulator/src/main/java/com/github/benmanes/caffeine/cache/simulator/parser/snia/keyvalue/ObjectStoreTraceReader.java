@@ -80,7 +80,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           while (curr + blockSize <= end) {
             long blockKey = getBlockKey(array[2], currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
-            currBlockID +=1;
+            currBlockID += 1;
             curr += blockSize;
           }
           // generate access for last block according to the size of the block
