@@ -248,8 +248,8 @@ public final class MeClockPolicy implements Policy {
     public double bitsPerKey() {
       return config().getDouble("me-clock.bits-per-key");
     }
-    public int numElements() {
-      return config().getInt("me-clock.num-elements");
+    public long numElements() {
+      return config().getLong("me-clock.num-elements");
     }
   }
 }

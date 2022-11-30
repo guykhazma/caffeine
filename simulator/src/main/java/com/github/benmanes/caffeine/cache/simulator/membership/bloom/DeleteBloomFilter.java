@@ -20,12 +20,12 @@ public class DeleteBloomFilter implements Filter {
         return data.length * 64L;
     }
 
-    public DeleteBloomFilter(int numElements, double bitsPerKey, int k) {
+    public DeleteBloomFilter(long numElements, double bitsPerKey, int k) {
         this(numElements, bitsPerKey, k, k / 2 + 1, Hash.randomSeed());
     }
 
     // constructor fixed seed for tests
-    public DeleteBloomFilter(int numElements, double bitsPerKey, int k, int existThreshold, long seed) {
+    public DeleteBloomFilter(long numElements, double bitsPerKey, int k, int existThreshold, long seed) {
         numElements = Math.max(1, numElements);
         this.k = k;
         this.existThreshold = existThreshold;
