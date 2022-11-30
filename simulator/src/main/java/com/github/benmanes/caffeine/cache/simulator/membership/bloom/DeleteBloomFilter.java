@@ -87,7 +87,10 @@ public class DeleteBloomFilter implements Filter {
 
     @Override
     public void add(long key) {
-        Collections.shuffle(hashfunctionList);
+        // shuffle the list if we randomly select the number of bits to set
+        if (numBitsToSetOnInsert < numHashFunctions) {
+            Collections.shuffle(hashfunctionList);
+        }
         // check if the number of bits to set should be chosen randomly
         if (numBitsToSetOnInsert == -1) {
             numBitsToSetOnInsert = r.nextInt(numHashFunctions);
@@ -125,7 +128,10 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public void delete(long key) {
-        Collections.shuffle(hashfunctionList);
+        // shuffle the list if we randomly select the number of bits to reset
+        if (numBitsToResetOnDelete < numHashFunctions) {
+            Collections.shuffle(hashfunctionList);
+        }
         // check if the number of bits to delete should be chosen randomly
         if (numBitsToResetOnDelete == -1) {
             numBitsToResetOnDelete = r.nextInt(numHashFunctions);

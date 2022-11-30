@@ -172,6 +172,10 @@ public final class Registry {
       registerMany(priority.label(), BFDPolicy.class,
               config -> BFDPolicy.policies(config, characteristics, priority));
     });
+    Stream.of(TBFPolicy.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), TBFPolicy.class,
+              config -> TBFPolicy.policies(config, characteristics, priority));
+    });
   }
 
   private void registerSampled() {

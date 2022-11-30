@@ -18,7 +18,6 @@ package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
-import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -27,6 +26,8 @@ import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.fastfilter.bloom.Bloom;
+import org.fastfilter.bloom.BloomUtils;
 
 import java.util.Set;
 
@@ -34,10 +35,10 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Charact
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 /**
- * BFD policy from TBF paper
+ * TBF policy from TBF paper
  */
 @PolicySpec(characteristics = WEIGHTED)
-public final class BFDPolicy implements Policy {
+public final class TBFPolicy implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
   final EvictionPolicy policy;
@@ -45,23 +46,36 @@ public final class BFDPolicy implements Policy {
   final long maximumSize;
   final boolean weighted;
   final Node sentinel;
-  final DeleteBloomFilter doorkeeper;
-
+  // bloom filter config
+  final int numHashFunctions;
+  final double bitsPerKey;
+  final long numElements;
+  // TBF relate - current bloom filter + prev bloom filter
+  Bloom curBloomFilter;
+  Bloom prevBloomFilter;
+  // the threshold to flip the bloom filters
+  long bloomFilterFlipThreshold;
   long currentSize;
 
-  public BFDPolicy(Config config, Set<Characteristic> characteristics,
+  public TBFPolicy(Config config, Set<Characteristic> characteristics,
                    Admission admission, EvictionPolicy policy) {
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.admittor = admission.from(config, policyStats);
     this.weighted = characteristics.contains(WEIGHTED);
 
-    BFDPolicy.BFDSettings settings = new BFDPolicy.BFDSettings(config);
+    TBFSettings settings = new TBFSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
     // get the bloom filter parameters
-    this.doorkeeper = DeleteBloomFilter.getBFDFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.numHashFunctions = settings.numHashFunctions();
+    this.bitsPerKey = settings.bitsPerKey();
+    this.numElements = settings.numElements();
+    this.curBloomFilter = BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
+    this.prevBloomFilter = BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
+    // set the threshold to the expected size
+    this.bloomFilterFlipThreshold = settings.numElements();
   }
 
   /**
@@ -70,7 +84,7 @@ public final class BFDPolicy implements Policy {
   public static Set<Policy> policies(Config config,
       Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
-    return settings.admission().stream().map(admission -> new BFDPolicy(config, characteristics, admission, policy))
+    return settings.admission().stream().map(admission -> new TBFPolicy(config, characteristics, admission, policy))
         .collect(toUnmodifiableSet());
   }
 
@@ -101,26 +115,33 @@ public final class BFDPolicy implements Policy {
       currentSize += (weight - old.weight);
       old.weight = weight;
 
-      doorkeeper.add(key);
+      curBloomFilter.add(key);
       policy.onAccess(old, policyStats);
       evict(old);
     }
   }
 
   /** Evicts while the map exceeds the maximum capacity. */
+  // Note that we simulate the iterator as FIFO always
   private void evict(Node candidate) {
     if (currentSize > maximumSize) {
+      int keysTraversed = 0;
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
-          doorkeeper.delete(candidate.key);
           evictEntry(candidate);
           continue;
         }
 
         Node victim = policy.findVictim(sentinel, policyStats);
-        if (doorkeeper.mayContain(victim.key)) { // recycle
-          doorkeeper.delete(victim.key);
+        if (curBloomFilter.mayContain(victim.key) || prevBloomFilter.mayContain(victim.key)) { // recycle
           victim.moveToTail();
+          keysTraversed += 1;
+          if (keysTraversed > bloomFilterFlipThreshold) {
+            // replace filters
+            prevBloomFilter = curBloomFilter;
+            // reset the other curr bloom filter
+            curBloomFilter =BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
+          }
         } else { // replace
           evictEntry(victim);
         }
@@ -139,7 +160,7 @@ public final class BFDPolicy implements Policy {
 
   /** The replacement policy. */
   public enum EvictionPolicy {
-    BFD_CLOCK {
+    TBF_CLOCK {
       @Override
       void onAccess(Node node, PolicyStats policyStats) {
         policyStats.recordOperation();
@@ -154,7 +175,7 @@ public final class BFDPolicy implements Policy {
     };
 
     public String label() {
-      return "linked.bfd";
+      return "linked.tbf";
     }
 
     /**
@@ -232,18 +253,18 @@ public final class BFDPolicy implements Policy {
     }
   }
 
-  static final class BFDSettings extends BasicSettings {
-    public BFDSettings(Config config) {
+  static final class TBFSettings extends BasicSettings {
+    public TBFSettings(Config config) {
       super(config);
     }
     public int numHashFunctions() {
-      return config().getInt("bfd.num-hash-functions");
+      return config().getInt("tbf.num-hash-functions");
     }
     public double bitsPerKey() {
-      return config().getDouble("bfd.bits-per-key");
+      return config().getDouble("tbf.bits-per-key");
     }
     public long numElements() {
-      return config().getLong("bfd.num-elements");
+      return config().getLong("tbf.num-elements");
     }
   }
 }
