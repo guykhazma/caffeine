@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.parser.adapt_size.AdaptSizeTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.address.AddressTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.address.penalties.AddressPenaltiesTraceReader;
@@ -98,7 +99,7 @@ public enum TraceFormat {
    * @param filePaths the path to the files in the trace's format
    * @return a reader for streaming the events from the file
    */
-  public TraceReader readFiles(List<String> filePaths) {
+  public TraceReader readFiles(List<String> filePaths, BasicSettings settings) {
     return new TraceReader() {
 
       @Override public ImmutableSet<Characteristic> characteristics() {
@@ -115,7 +116,11 @@ public enum TraceFormat {
         return filePaths.stream().map(path -> {
           List<String> parts = Splitter.on(':').limit(2).splitToList(path);
           TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
-          return format.factory.apply(Iterables.getLast(parts));
+          TraceReader reader = format.factory.apply(Iterables.getLast(parts));
+          if (format.name() == "SNIA_OBJECT_STORE") {
+            ((ObjectStoreTraceReader) reader).setBlockSize(settings.trace().blockSize());
+          }
+          return reader;
         }).collect(toImmutableList());
       }
     };

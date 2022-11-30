@@ -43,7 +43,11 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
     super(filePath);
   }
 
-  @Override
+  public void setBlockSize(int blockSize) {
+    this.blockSize = blockSize;
+  }
+
+    @Override
   public Set<Characteristic> characteristics() {
     return Set.of(WEIGHTED);
   }

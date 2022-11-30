@@ -198,6 +198,10 @@ public class BasicSettings {
       checkState(isFiles());
       return new TraceFilesSettings();
     }
+    public int blockSize() {
+      return config.getInt("trace.blocksize");
+    }
+
     public SyntheticSettings synthetic() {
       checkState(isSynthetic());
       return new SyntheticSettings();

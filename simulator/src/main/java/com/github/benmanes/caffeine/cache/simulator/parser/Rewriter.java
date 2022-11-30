@@ -67,7 +67,7 @@ public final class Rewriter implements Runnable {
   public void run() {
     var stopwatch = Stopwatch.createStarted();
     try (var output = new BufferedOutputStream(Files.newOutputStream(outputFile));
-         var events = inputFormat.readFiles(inputFiles).events();
+         var events = inputFormat.readFiles(inputFiles, null).events();
          var writer = outputFormat.writer(output)) {
       int[] tick = { 0 };
       writer.writeHeader();

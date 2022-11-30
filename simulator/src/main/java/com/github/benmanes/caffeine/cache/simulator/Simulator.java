@@ -122,7 +122,7 @@ public final class Simulator {
     }
     List<String> filePaths = settings.trace().traceFiles().paths();
     TraceFormat format = settings.trace().traceFiles().format();
-    return format.readFiles(filePaths);
+    return format.readFiles(filePaths, settings);
   }
 
   /** Returns the policy actors that asynchronously apply the trace events. */
