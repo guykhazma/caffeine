@@ -1,16 +1,10 @@
 package com.github.benmanes.caffeine.cache.simulator.membership.bloom;
 
-import com.google.common.collect.ImmutableSet;
 import org.fastfilter.Filter;
 import org.fastfilter.utils.Hash;
 
-import java.util.Collections;
-import java.util.List;
 import java.util.Random;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 /**
  * Bloom filter implementation that supports delete and variable sized check
@@ -30,8 +24,6 @@ public class DeleteBloomFilter implements Filter {
     private int numBitsToSetOnInsert;
     // The number of reset when delete
     private int numBitsToResetOnDelete;
-    // A list with the hash function ids to be used when randomly selecting bits to add/delete
-    private final List<Integer> hashfunctionList;
     // random for selecting which bits to set/reset
     private Random r = new Random();
 
@@ -70,7 +62,6 @@ public class DeleteBloomFilter implements Filter {
                              long seed) {
         numElements = Math.max(1, numElements);
         this.numHashFunctions = numHashFunctions;
-        this.hashfunctionList = IntStream.range(0, numHashFunctions).boxed().collect(Collectors.toList());
         this.existThreshold = existThreshold;
         this.numBitsToSetOnInsert = numBitsToSetOnInsert;
         this.numBitsToResetOnDelete = numBitsToResetOnDelete;
@@ -87,22 +78,17 @@ public class DeleteBloomFilter implements Filter {
 
     @Override
     public void add(long key) {
-        // shuffle the list if we randomly select the number of bits to set
-        if (numBitsToSetOnInsert < numHashFunctions) {
-            Collections.shuffle(hashfunctionList);
-        }
-        // check if the number of bits to set should be chosen randomly
-        if (numBitsToSetOnInsert == -1) {
-            numBitsToSetOnInsert = r.nextInt(numHashFunctions);
-        }
-        // get the ids of hash functions be set
-        ImmutableSet<Integer> idsToSet = hashfunctionList.stream().limit(numBitsToSetOnInsert).collect(toImmutableSet());
+        int currNumBitsSet = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
         long b = hash;
         for (int i = 0; i < numHashFunctions; i++) {
-            if (idsToSet.contains(i)) {
+            // set the bit either if we need to set all of the bits or if the hash function
+            // was randomly selected and still less than the amount of bits to set
+            if (numBitsToSetOnInsert == numHashFunctions ||
+                    (currNumBitsSet < numBitsToSetOnInsert && r.nextBoolean())) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] |= 1L << a;
+                currNumBitsSet += 1;
             }
             a += b;
         }
@@ -128,23 +114,17 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public void delete(long key) {
-        // shuffle the list if we randomly select the number of bits to reset
-        if (numBitsToResetOnDelete < numHashFunctions) {
-            Collections.shuffle(hashfunctionList);
-        }
-        // check if the number of bits to delete should be chosen randomly
-        if (numBitsToResetOnDelete == -1) {
-            numBitsToResetOnDelete = r.nextInt(numHashFunctions);
-        }
-        // get the ids of hash functions be deleted
-        ImmutableSet<Integer> idsToDelete = hashfunctionList.stream().limit(numBitsToResetOnDelete).collect(toImmutableSet());
+        int currNumBitsDeleted = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
         long b = hash;
         for (int i = 0; i < numHashFunctions; i++) {
-            // reset the bit
-            if (idsToDelete.contains(i)) {
+            // delete the bit either if we need to delete all of the bits or if the hash function
+            // was randomly selected and still less than the amount of bits to delete
+            if (numBitsToResetOnDelete == numHashFunctions ||
+                    (currNumBitsDeleted < numBitsToResetOnDelete && r.nextBoolean())) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] &= ~(1L << a);
+                currNumBitsDeleted += 1;
             }
             a += b;
         }
