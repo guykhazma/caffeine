@@ -78,6 +78,11 @@ public class DeleteBloomFilter implements Filter {
 
     @Override
     public void add(long key) {
+        int numBitsToSet = numBitsToSetOnInsert;
+        // if we need to draw a number of bits to delete
+        if (numBitsToSet == -1) {
+            numBitsToSet = r.nextInt(numHashFunctions) + 1;
+        }
         int currNumBitsSet = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
@@ -85,8 +90,8 @@ public class DeleteBloomFilter implements Filter {
         for (int i = 0; i < numHashFunctions; i++) {
             // set the bit either if we need to set all of the bits or if the hash function
             // was randomly selected and still less than the amount of bits to set
-            if (numBitsToSetOnInsert == numHashFunctions ||
-                    (currNumBitsSet < numBitsToSetOnInsert && r.nextBoolean())) {
+            if (numBitsToSet == numHashFunctions ||
+                    (currNumBitsSet < numBitsToSet && r.nextBoolean())) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] |= 1L << a;
                 currNumBitsSet += 1;
             }
@@ -114,6 +119,11 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public void delete(long key) {
+        int numBitsToDelete = numBitsToResetOnDelete;
+        // if we need to draw a number of bits to delete
+        if (numBitsToDelete == -1) {
+            numBitsToDelete = r.nextInt(numHashFunctions) + 1;
+        }
         int currNumBitsDeleted = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
@@ -121,8 +131,8 @@ public class DeleteBloomFilter implements Filter {
         for (int i = 0; i < numHashFunctions; i++) {
             // delete the bit either if we need to delete all of the bits or if the hash function
             // was randomly selected and still less than the amount of bits to delete
-            if (numBitsToResetOnDelete == numHashFunctions ||
-                    (currNumBitsDeleted < numBitsToResetOnDelete && r.nextBoolean())) {
+            if (numBitsToDelete == numHashFunctions ||
+                    (currNumBitsDeleted < numBitsToDelete && r.nextBoolean())) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] &= ~(1L << a);
                 currNumBitsDeleted += 1;
             }
