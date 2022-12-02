@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.membership.bloom.DeleteBloomFilter;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -26,8 +27,6 @@ import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import org.fastfilter.bloom.Bloom;
-import org.fastfilter.bloom.BloomUtils;
 
 import java.util.Set;
 
@@ -51,11 +50,13 @@ public final class TBFPolicy implements Policy {
   final double bitsPerKey;
   final long numElements;
   // TBF relate - current bloom filter + prev bloom filter
-  Bloom curBloomFilter;
-  Bloom prevBloomFilter;
+  DeleteBloomFilter curBloomFilter;
+  DeleteBloomFilter prevBloomFilter;
   // the threshold to flip the bloom filters
   long bloomFilterFlipThreshold;
   long currentSize;
+  // used to keep track of the number of keys traversed since last replacement
+  long keysTraversed = 0;
 
   public TBFPolicy(Config config, Set<Characteristic> characteristics,
                    Admission admission, EvictionPolicy policy) {
@@ -72,8 +73,9 @@ public final class TBFPolicy implements Policy {
     this.numHashFunctions = settings.numHashFunctions();
     this.bitsPerKey = settings.bitsPerKey();
     this.numElements = settings.numElements();
-    this.curBloomFilter = BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
-    this.prevBloomFilter = BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
+    // Use the delete bloom filter for similar comparison
+    this.curBloomFilter = DeleteBloomFilter.getBloomFilter(numElements, bitsPerKey, numHashFunctions);
+    this.prevBloomFilter = DeleteBloomFilter.getBloomFilter(numElements, bitsPerKey, numHashFunctions);
     // set the threshold to the expected size
     this.bloomFilterFlipThreshold = settings.numElements();
   }
@@ -125,7 +127,6 @@ public final class TBFPolicy implements Policy {
   // Note that we simulate the iterator as FIFO always
   private void evict(Node candidate) {
     if (currentSize > maximumSize) {
-      int keysTraversed = 0;
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
           evictEntry(candidate);
@@ -140,7 +141,9 @@ public final class TBFPolicy implements Policy {
             // replace filters
             prevBloomFilter = curBloomFilter;
             // reset the other curr bloom filter
-            curBloomFilter =BloomUtils.getBloomFilter(Math.toIntExact(numElements), bitsPerKey, numHashFunctions);
+            curBloomFilter = DeleteBloomFilter.getBloomFilter(numElements, bitsPerKey, numHashFunctions);
+            // reset the number of traversed keys
+            keysTraversed = 0;
           }
         } else { // replace
           evictEntry(victim);

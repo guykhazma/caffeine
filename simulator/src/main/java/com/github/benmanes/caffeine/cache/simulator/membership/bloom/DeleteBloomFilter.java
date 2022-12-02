@@ -32,6 +32,11 @@ public class DeleteBloomFilter implements Filter {
         return data.length * 64L;
     }
 
+    public static DeleteBloomFilter getBloomFilter(long numElements, double bitsPerKey, int numHashFunctions) {
+        return new DeleteBloomFilter(numElements, bitsPerKey, numHashFunctions,
+                numHashFunctions, numHashFunctions, numHashFunctions, Hash.randomSeed());
+    }
+
     public static DeleteBloomFilter getBFDFilter(long numElements, double bitsPerKey, int numHashFunctions) {
         return getBFDFilter(numElements, bitsPerKey, numHashFunctions, Hash.randomSeed());
     }
