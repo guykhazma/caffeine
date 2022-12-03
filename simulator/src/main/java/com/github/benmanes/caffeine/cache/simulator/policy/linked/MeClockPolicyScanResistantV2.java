@@ -39,7 +39,7 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
  * Every N access the ghost bloom filter is reset
  */
 @PolicySpec(characteristics = WEIGHTED)
-public final class MeClockPolicyScanResistant implements Policy {
+public final class MeClockPolicyScanResistantV2 implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
   final EvictionPolicy policy;
@@ -52,13 +52,13 @@ public final class MeClockPolicyScanResistant implements Policy {
 
   long currentSize;
 
-  public MeClockPolicyScanResistant(Config config, Set<Characteristic> characteristics,
-                                    Admission admission, EvictionPolicy policy) {
+  public MeClockPolicyScanResistantV2(Config config, Set<Characteristic> characteristics,
+                                      Admission admission, EvictionPolicy policy) {
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.admittor = admission.from(config, policyStats);
     this.weighted = characteristics.contains(WEIGHTED);
 
-    MeClockPolicyScanResistant.MeClockSettings settings = new MeClockPolicyScanResistant.MeClockSettings(config);
+    MeClockPolicyScanResistantV2.MeClockSettings settings = new MeClockPolicyScanResistantV2.MeClockSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
@@ -75,7 +75,7 @@ public final class MeClockPolicyScanResistant implements Policy {
   public static Set<Policy> policies(Config config,
       Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
-    return settings.admission().stream().map(admission -> new MeClockPolicyScanResistant(config, characteristics, admission, policy))
+    return settings.admission().stream().map(admission -> new MeClockPolicyScanResistantV2(config, characteristics, admission, policy))
         .collect(toUnmodifiableSet());
   }
 

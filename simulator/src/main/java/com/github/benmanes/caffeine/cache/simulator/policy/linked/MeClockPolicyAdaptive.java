@@ -29,17 +29,16 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.Set;
+import java.util.function.Predicate;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 /**
- * Me-Clock scan resistant by using two bloom filters
- * Each insertion is first registered in the bloom filter and inserted to the
- * Every N access the ghost bloom filter is reset
+ * Me-Clock policy as described in the paper
  */
 @PolicySpec(characteristics = WEIGHTED)
-public final class MeClockPolicyScanResistant implements Policy {
+public final class MeClockPolicyAdaptive implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
   final EvictionPolicy policy;
@@ -47,26 +46,37 @@ public final class MeClockPolicyScanResistant implements Policy {
   final long maximumSize;
   final boolean weighted;
   final Node sentinel;
-  final DeleteBloomFilter cacheBloomFilter;
-  final DeleteBloomFilter admissionBloomFilter;
+  final DeleteBloomFilter doorkeeper;
+  final DeleteBloomFilter ghost;
+  // the threshold to determine if an element is in the bloom filter
+  int existThreshold;
+  // The number of bits to set on insert
+  int numBitsToSetOnInsert;
+  // The number of reset when delete
+  int numBitsToResetOnDelete;
 
   long currentSize;
 
-  public MeClockPolicyScanResistant(Config config, Set<Characteristic> characteristics,
-                                    Admission admission, EvictionPolicy policy) {
+  public MeClockPolicyAdaptive(Config config, Set<Characteristic> characteristics,
+                               Admission admission, EvictionPolicy policy) {
     this.policyStats = new PolicyStats(admission.format(policy.label()));
     this.admittor = admission.from(config, policyStats);
     this.weighted = characteristics.contains(WEIGHTED);
 
-    MeClockPolicyScanResistant.MeClockSettings settings = new MeClockPolicyScanResistant.MeClockSettings(config);
+    MeClockAdaptiveSettings settings = new MeClockAdaptiveSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.sentinel = new Node();
     this.policy = policy;
-    // bloom filter to keep track of historical entries
-    this.admissionBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
-    // bloom filter to keep track of entries in cache
-    this.cacheBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    // set initial parameters
+    this.numBitsToSetOnInsert = settings.numHashFunctions() / 4;
+    this.numBitsToResetOnDelete = settings.numHashFunctions() / 4;
+    this.existThreshold = settings.numHashFunctions() / 2;
+    // get the bloom filter parameters
+    this.doorkeeper = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions(),
+            this.existThreshold, this.numBitsToSetOnInsert, this.numBitsToResetOnDelete);
+    this.ghost = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions(),
+            settings.numHashFunctions(), settings.numHashFunctions(), settings.numHashFunctions());
   }
 
   /**
@@ -75,7 +85,7 @@ public final class MeClockPolicyScanResistant implements Policy {
   public static Set<Policy> policies(Config config,
       Set<Characteristic> characteristics, EvictionPolicy policy) {
     BasicSettings settings = new BasicSettings(config);
-    return settings.admission().stream().map(admission -> new MeClockPolicyScanResistant(config, characteristics, admission, policy))
+    return settings.admission().stream().map(admission -> new MeClockPolicyAdaptive(config, characteristics, admission, policy))
         .collect(toUnmodifiableSet());
   }
 
@@ -96,27 +106,21 @@ public final class MeClockPolicyScanResistant implements Policy {
         policyStats.recordOperation();
         return;
       }
-      // on first access we set only certain number bits and not insert it
-      // first check the node was recorded before in the bloom filter to be scan resistant
-      if (!admissionBloomFilter.mayContain(key)) {
-        // add to admission bloom filter
-        admissionBloomFilter.add(key);
-      } else {
-        // we add to cache so remove from admission bloom filter
-        admissionBloomFilter.delete(key);
-        Node node = new Node(key, weight, sentinel);
-        data.put(key, node);
-        currentSize += node.weight;
-        node.appendToTail();
-        evict(node);
-      }
+      Node node = new Node(key, weight, sentinel);
+      // add to the bloom filter to keep track of recency
+      doorkeeper.add(key);
+      data.put(key, node);
+      currentSize += node.weight;
+      node.appendToTail();
+      evict(node);
     } else { // hit
       policyStats.recordWeightedHit(weight);
       currentSize += (weight - old.weight);
       old.weight = weight;
-
-      cacheBloomFilter.add(key);
+      // this addition will increase the "frequency" by setting more bits
+      doorkeeper.add(key);
       policy.onAccess(old, policyStats);
+      // should never really evict anything
       evict(old);
     }
   }
@@ -124,19 +128,45 @@ public final class MeClockPolicyScanResistant implements Policy {
   /** Evicts while the map exceeds the maximum capacity. */
   private void evict(Node candidate) {
     if (currentSize > maximumSize) {
+      // extract the condition we search for by default the exist condition
+      Predicate<Integer> condition = i -> (i >= existThreshold);
+      // check if the item was seen in history
+      int numBitsSet = ghost.numBitsSet(candidate.key);
+      if (numBitsSet > 0) {
+        // this entry was referenced only once in the history (equivalent to hit on B1)
+        if (numBitsSet == numBitsToSetOnInsert) {
+          // we should evict frequent item so searching for frequent items (from T2)
+          condition =  i -> (i >= doorkeeper.numHashFunctions / 2);
+          // next time we insert a new item we want to evict
+          existThreshold = Math.min(existThreshold, existThreshold - 1);
+        } else if (numBitsSet > numBitsToSetOnInsert) {
+          // this entry was referenced more than once - similar to hit in B2
+          // we should evict a recent (from T1)
+          condition =  i -> (i < doorkeeper.numHashFunctions / 2 && i >= doorkeeper.numHashFunctions / 4);
+          existThreshold = Math.min(existThreshold + 1, doorkeeper.numHashFunctions);
+        }
+        // add back to bloom filter with the historical value
+        doorkeeper.add(candidate.key, numBitsSet);
+        // remove from ghost cache as the element is promoted to cache
+        ghost.delete(candidate.key);
+      }
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
-          cacheBloomFilter.delete(candidate.key);
+          doorkeeper.delete(candidate.key);
           evictEntry(candidate);
           continue;
         }
 
+        // This key was not seen before replace according to the current threshold
         Node victim = policy.findVictim(sentinel, policyStats);
-        if (cacheBloomFilter.mayContain(victim.key)) { // recycle
-          cacheBloomFilter.delete(victim.key);
+        int victimNumBits = doorkeeper.numBitsSet(victim.key);
+        if (condition.test(victimNumBits)) { // recycle if needed
+          doorkeeper.delete(victim.key);
           victim.moveToTail();
         } else { // replace
           evictEntry(victim);
+          // add to ghost bloom filter with the same number of bits
+          ghost.add(victim.key, numBitsSet);
         }
       }
     } else {
@@ -153,7 +183,7 @@ public final class MeClockPolicyScanResistant implements Policy {
 
   /** The replacement policy. */
   public enum EvictionPolicy {
-    ME_CLOCK_SCAN_RESISTANT {
+    ME_CLOCK {
       @Override
       void onAccess(Node node, PolicyStats policyStats) {
         policyStats.recordOperation();
@@ -168,7 +198,7 @@ public final class MeClockPolicyScanResistant implements Policy {
     };
 
     public String label() {
-      return "linked.meclockscnaresistant";
+      return "linked.meclockadaptive";
     }
 
     /**
@@ -246,18 +276,18 @@ public final class MeClockPolicyScanResistant implements Policy {
     }
   }
 
-  static final class MeClockSettings extends BasicSettings {
-    public MeClockSettings(Config config) {
+  static final class MeClockAdaptiveSettings extends BasicSettings {
+    public MeClockAdaptiveSettings(Config config) {
       super(config);
     }
     public int numHashFunctions() {
-      return config().getInt("me-clock.num-hash-functions");
+      return config().getInt("me-clock-adaptive.num-hash-functions");
     }
     public double bitsPerKey() {
-      return config().getDouble("me-clock.bits-per-key");
+      return config().getDouble("me-clock-adaptive.bits-per-key");
     }
     public long numElements() {
-      return config().getLong("me-clock.num-elements");
+      return config().getLong("me-clock-adaptive.num-elements");
     }
   }
 }

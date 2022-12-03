@@ -14,10 +14,10 @@ import java.util.Random;
  * - Number of bits to use when determining if an element is in the bloom filter
  */
 public class DeleteBloomFilter implements Filter {
-    private final int numHashFunctions;
+    public final int numHashFunctions;
     private final long seed;
     private final int arraySize;
-    private final long[] data;
+    private long[] data;
     // the threshold to determine if an element is in the bloom filter
     private final int existThreshold;
     // The number of bits to set on insert
@@ -61,6 +61,12 @@ public class DeleteBloomFilter implements Filter {
                 seed);
     }
 
+    public DeleteBloomFilter(long numElements, double bitsPerKey, int numHashFunctions,
+                             int existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete) {
+        this(numElements, bitsPerKey, numHashFunctions,
+                existThreshold, numBitsToSetOnInsert, numBitsToResetOnDelete, Hash.randomSeed());
+    }
+
     // constructor fixed seed for tests
     public DeleteBloomFilter(long numElements, double bitsPerKey, int numHashFunctions,
                              int existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete,
@@ -81,13 +87,12 @@ public class DeleteBloomFilter implements Filter {
         return true;
     }
 
-    @Override
-    public void add(long key) {
-        int numBitsToSet = numBitsToSetOnInsert;
-        // if we need to draw a number of bits to delete
-        if (numBitsToSet == -1) {
-            numBitsToSet = r.nextInt(numHashFunctions) + 1;
-        }
+    // reset all of the bits in the bloom filter
+    public void reset() {
+        data = new long[arraySize];
+    }
+
+    public void add(long key, int numBitsToSet) {
         int currNumBitsSet = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
@@ -105,30 +110,39 @@ public class DeleteBloomFilter implements Filter {
     }
 
     @Override
-    public boolean mayContain(long key) {
+    public void add(long key) {
+        int numBitsToSet = numBitsToSetOnInsert;
+        // if we need to draw a number of bits to delete
+        if (numBitsToSet == -1) {
+            numBitsToSet = r.nextInt(numHashFunctions) + 1;
+        }
+        add(key, numBitsToSet);
+    }
+
+    public int numBitsSet(long key) {
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
         long b = hash;
-        double numHits = 0;
+        int numHits = 0;
         for (int i = 0; i < numHashFunctions; i++) {
             if ((data[Hash.reduce((int) (a >>> 32), arraySize)] & 1L << a) != 0) {
                 numHits += 1;
             }
             a += b;
         }
+        return numHits;
+    }
+
+    @Override
+    public boolean mayContain(long key) {
         // an element is assumed to be recorded if at least half of the bits are set to 1
-        if (numHits >= this.existThreshold) {
+        if (numBitsSet(key) >= this.existThreshold) {
             return true;
         }
         return false;
     }
 
-    public void delete(long key) {
-        int numBitsToDelete = numBitsToResetOnDelete;
-        // if we need to draw a number of bits to delete
-        if (numBitsToDelete == -1) {
-            numBitsToDelete = r.nextInt(numHashFunctions) + 1;
-        }
+    public void delete(long key, int numBitsToDelete) {
         int currNumBitsDeleted = 0;
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
@@ -143,6 +157,15 @@ public class DeleteBloomFilter implements Filter {
             }
             a += b;
         }
+    }
+
+    public void delete(long key) {
+        int numBitsToDelete = numBitsToResetOnDelete;
+        // if we need to draw a number of bits to delete
+        if (numBitsToDelete == -1) {
+            numBitsToDelete = r.nextInt(numHashFunctions) + 1;
+        }
+        delete(key, numBitsToDelete);
     }
 }
 

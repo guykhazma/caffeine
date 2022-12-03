@@ -167,6 +167,10 @@ public final class Registry {
       registerMany(priority.label(), MeClockPolicyScanResistant.class,
               config -> MeClockPolicyScanResistant.policies(config, characteristics, priority));
     });
+    Stream.of(MeClockPolicyAdaptive.EvictionPolicy.values()).forEach(priority -> {
+      registerMany(priority.label(), MeClockPolicyAdaptive.class,
+              config -> MeClockPolicyAdaptive.policies(config, characteristics, priority));
+    });
     // TBF
     Stream.of(BFDPolicy.EvictionPolicy.values()).forEach(priority -> {
       registerMany(priority.label(), BFDPolicy.class,
