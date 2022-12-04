@@ -79,13 +79,16 @@ public final class MeClockPolicyAdaptive implements Policy {
     this.numBitsToResetOnDelete = settings.numHashFunctions() / 4;
 
     this.existThreshold = settings.numHashFunctions() / 4;
-    this.minExistThreshold = settings.numHashFunctions() / 4;
-    this.maxExistThreshold = settings.numHashFunctions() - settings.numHashFunctions() / 4;
+    // [4]
+    this.minExistThreshold = existThreshold - existThreshold / 8;
+    this.maxExistThreshold = settings.numHashFunctions() - settings.numHashFunctions() / 8;
 
     // set predicates
     // for exists we give some slack on the left side to handle deletions
-    exists = i -> (i >= existThreshold - existThreshold / 2 && i < 2*existThreshold);
-    frequent = i -> (i >= 2*existThreshold);
+    // [2-6]
+    exists = i -> (i >= existThreshold - existThreshold / 8 && i < 2*existThreshold - existThreshold / 8);
+    // [6-16]
+    frequent = i -> (i >= 2*existThreshold - existThreshold / 8);
 
     // get the bloom filter parameters
     this.doorkeeper = new DeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions(),
