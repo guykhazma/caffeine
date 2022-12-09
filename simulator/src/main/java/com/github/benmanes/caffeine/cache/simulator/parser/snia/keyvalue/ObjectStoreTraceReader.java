@@ -26,7 +26,6 @@ import java.util.stream.Stream;
 import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
-import com.google.common.primitives.Ints;
 
 /**
  * A reader for the IBM ObjectStore trace files provided by
@@ -57,20 +56,19 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
         .filter(array -> array[1].equals("REST.GET.OBJECT"))
         .flatMap(array -> {
           long key = new BigInteger(array[2], 16).longValue();
-          int objSize = Ints.saturatedCast(Long.parseLong(array[3]));
+          long objSize = Long.parseLong(array[3]);
           long start = Long.parseLong(array[4]);
           long end = Long.parseLong(array[5]);
-          int  weight = Ints.saturatedCast(end - start + 1);
-          // filter invalid events
-          if (weight < 0) {
-              return Stream.empty();
-          }
+          // read is inclusive so adding +1
+          // Note that the saturated cast in the original code caused issue since some ranges are larger than 2GB
+          long weight = end - start + 1;
 
           // if the object size is less than the block size then count it as weight that is being read
+          // assuming the block size is always smaller than MAX INT
           if (objSize < blockSize) {
-              return Stream.of(AccessEvent.forKeyAndWeight(key, weight));
+              return Stream.of(AccessEvent.forKeyAndWeight(key, (int) weight));
           }
-          long total = 0;
+          // in this case the object spans multiple block so find the relevant blocks
           // generate access requests according to block sizes
           long startBlock = Math.floorDiv(start, blockSize);
           long currBlockID = startBlock;
@@ -79,9 +77,9 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           List<AccessEvent> accessEventList = new ArrayList<>();
           // add first block
           long blockKey = getBlockKey(array[2], currBlockID);
-          // read is inclusive
-          accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start + 1)));
-          total += curr + blockSize - start + 1;
+          // the end can be smaller than the first block size so using the min
+          // read is inclusive so use +1
+          accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (Math.min(end, curr + blockSize) - start + 1)));
           curr += blockSize;
           currBlockID += 1;
           while (curr + blockSize <= end) {
@@ -89,15 +87,12 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID += 1;
             curr += blockSize;
-            total += blockSize;
           }
           // generate access for last block according to the size of the block
           if (curr < end) {
               blockKey = getBlockKey(array[2], currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (end - curr)));
-              total += end - curr;
           }
-          assert (total == weight);
           return accessEventList.stream();
         });
   }
