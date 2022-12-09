@@ -117,6 +117,7 @@ public final class TBFPolicy implements Policy {
       currentSize += (weight - old.weight);
       old.weight = weight;
 
+      // According to the paper new objects are inserted unmarked
       curBloomFilter.add(key);
       policy.onAccess(old, policyStats);
       evict(old);
