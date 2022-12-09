@@ -60,7 +60,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           int objSize = Ints.saturatedCast(Long.parseLong(array[3]));
           long start = Long.parseLong(array[4]);
           long end = Long.parseLong(array[5]);
-          int  weight = Ints.saturatedCast(end - start);
+          int  weight = Ints.saturatedCast(end - start + 1);
           // filter invalid events
           if (weight < 0) {
               return Stream.empty();
@@ -78,7 +78,8 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           List<AccessEvent> accessEventList = new ArrayList<>();
           // add first block
           long blockKey = getBlockKey(array[2], currBlockID);
-          accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start)));
+          // read is inclusive
+          accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start + 1)));
           curr += blockSize;
           currBlockID += 1;
           while (curr + blockSize <= end) {
