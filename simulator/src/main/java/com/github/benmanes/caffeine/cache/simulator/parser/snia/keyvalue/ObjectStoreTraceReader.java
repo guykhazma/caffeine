@@ -76,21 +76,20 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           long curr = startBlock * blockSize;
           // add specific read for the start
           List<AccessEvent> accessEventList = new ArrayList<>();
-          if (start > curr) {
-              long blockKey = getBlockKey(array[2], currBlockID);
-              accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start)));
-          }
+          // add first block
+          long blockKey = getBlockKey(array[2], currBlockID);
+          accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start)));
           curr += blockSize;
           currBlockID += 1;
           while (curr + blockSize <= end) {
-            long blockKey = getBlockKey(array[2], currBlockID);;
+            blockKey = getBlockKey(array[2], currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID += 1;
             curr += blockSize;
           }
           // generate access for last block according to the size of the block
           if (curr < end) {
-              long blockKey = getBlockKey(array[2], currBlockID);
+              blockKey = getBlockKey(array[2], currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (end - curr)));
           }
           return accessEventList.stream();
