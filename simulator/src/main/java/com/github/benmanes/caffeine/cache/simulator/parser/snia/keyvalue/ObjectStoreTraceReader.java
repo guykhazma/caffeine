@@ -70,6 +70,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           if (objSize < blockSize) {
               return Stream.of(AccessEvent.forKeyAndWeight(key, weight));
           }
+          long total = 0;
           // generate access requests according to block sizes
           long startBlock = Math.floorDiv(start, blockSize);
           long currBlockID = startBlock;
@@ -80,6 +81,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           long blockKey = getBlockKey(array[2], currBlockID);
           // read is inclusive
           accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start + 1)));
+          total += curr + blockSize - start + 1;
           curr += blockSize;
           currBlockID += 1;
           while (curr + blockSize <= end) {
@@ -87,13 +89,15 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
             currBlockID += 1;
             curr += blockSize;
+            total += blockSize;
           }
           // generate access for last block according to the size of the block
           if (curr < end) {
               blockKey = getBlockKey(array[2], currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (end - curr)));
+              total += end - curr;
           }
-
+          assert (total == weight);
           return accessEventList.stream();
         });
   }
