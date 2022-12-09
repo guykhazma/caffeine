@@ -74,7 +74,14 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
           long startBlock = Math.floorDiv(start, blockSize);
           long currBlockID = startBlock;
           long curr = startBlock * blockSize;
+          // add specific read for the start
           List<AccessEvent> accessEventList = new ArrayList<>();
+          if (start > curr) {
+              long blockKey = getBlockKey(array[2], currBlockID);
+              accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (curr + blockSize - start)));
+          }
+          curr += blockSize;
+          currBlockID += 1;
           while (curr + blockSize <= end) {
             long blockKey = getBlockKey(array[2], currBlockID);;
             accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, blockSize));
