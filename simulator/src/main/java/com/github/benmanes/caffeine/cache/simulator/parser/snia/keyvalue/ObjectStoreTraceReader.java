@@ -66,9 +66,9 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
               return Stream.empty();
           }
 
-          // if the object size is less than the block size then count it as the actual length
+          // if the object size is less than the block size then count it as weight that is being read
           if (objSize < blockSize) {
-              return Stream.of(AccessEvent.forKeyAndWeight(key, objSize));
+              return Stream.of(AccessEvent.forKeyAndWeight(key, weight));
           }
           // generate access requests according to block sizes
           long startBlock = Math.floorDiv(start, blockSize);
@@ -93,6 +93,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
               blockKey = getBlockKey(array[2], currBlockID);
               accessEventList.add(AccessEvent.forKeyAndWeight(blockKey, (int) (end - curr)));
           }
+
           return accessEventList.stream();
         });
   }
