@@ -51,6 +51,9 @@ public final class MeClockPolicyScanResistant implements Policy {
   final DeleteBloomFilter admissionBloomFilter;
 
   long currentSize;
+  // used to keep track of the number of keys traversed since last replacement
+  long keysInTheDeleteBloomFilter = 0;
+  long admissionBloomFilterResetThreshold;
 
   public MeClockPolicyScanResistant(Config config, Set<Characteristic> characteristics,
                                     Admission admission, EvictionPolicy policy) {
@@ -67,6 +70,7 @@ public final class MeClockPolicyScanResistant implements Policy {
     this.admissionBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
     // bloom filter to keep track of entries in cache
     this.cacheBloomFilter = DeleteBloomFilter.getMeClockDeleteBloomFilter(settings.numElements(), settings.bitsPerKey(), settings.numHashFunctions());
+    this.admissionBloomFilterResetThreshold = settings.numElements();
   }
 
   /**
@@ -101,9 +105,12 @@ public final class MeClockPolicyScanResistant implements Policy {
       if (!admissionBloomFilter.mayContain(key)) {
         // add to admission bloom filter
         admissionBloomFilter.add(key);
+        keysInTheDeleteBloomFilter += 1;
       } else {
         // we add to cache so remove from admission bloom filter
         admissionBloomFilter.delete(key);
+        // decrease count as the element was deleted from the admission bloom filter
+        keysInTheDeleteBloomFilter -= 1;
         Node node = new Node(key, weight, sentinel);
         data.put(key, node);
         currentSize += node.weight;
@@ -123,6 +130,11 @@ public final class MeClockPolicyScanResistant implements Policy {
 
   /** Evicts while the map exceeds the maximum capacity. */
   private void evict(Node candidate) {
+    // reset the admission bloom filter if needed
+    if (keysInTheDeleteBloomFilter > admissionBloomFilterResetThreshold) {
+      keysInTheDeleteBloomFilter = 0;
+      admissionBloomFilter.reset();
+    }
     if (currentSize > maximumSize) {
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
