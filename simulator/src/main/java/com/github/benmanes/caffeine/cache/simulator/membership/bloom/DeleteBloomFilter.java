@@ -97,11 +97,14 @@ public class DeleteBloomFilter implements Filter {
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
         long b = hash;
-        for (int i = 0; i < numHashFunctions; i++) {
-            // set the bit either if we need to set all of the bits or if the hash function
-            // was randomly selected and still less than the amount of bits to set
-            if (numBitsToSet == numHashFunctions ||
-                    (currNumBitsSet < numBitsToSet && r.nextBoolean())) {
+        for (int i = 0; i < numHashFunctions && currNumBitsSet < numBitsToSet; i++) {
+            if (numBitsToSet == numHashFunctions) {
+                data[Hash.reduce((int) (a >>> 32), arraySize)] |= 1L << a;
+                currNumBitsSet += 1;
+            }
+            // make sure to set exactly the num bits asked
+            // so if a bit is already set to 1 don't count it
+            else if ((data[Hash.reduce((int) (a >>> 32), arraySize)] & 1L << a) == 0) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] |= 1L << a;
                 currNumBitsSet += 1;
             }
@@ -147,11 +150,14 @@ public class DeleteBloomFilter implements Filter {
         long hash = Hash.hash64(key, seed);
         long a = (hash >>> 32) | (hash << 32);
         long b = hash;
-        for (int i = 0; i < numHashFunctions; i++) {
+        for (int i = 0; i < numHashFunctions && currNumBitsDeleted < numBitsToDelete; i++) {
             // delete the bit either if we need to delete all of the bits or if the hash function
             // was randomly selected and still less than the amount of bits to delete
-            if (numBitsToDelete == numHashFunctions ||
-                    (currNumBitsDeleted < numBitsToDelete && r.nextBoolean())) {
+            if (numBitsToDelete == numHashFunctions) {
+                data[Hash.reduce((int) (a >>> 32), arraySize)] &= ~(1L << a);
+                currNumBitsDeleted += 1;
+            }
+            else if ((data[Hash.reduce((int) (a >>> 32), arraySize)] & 1L << a) != 0) {
                 data[Hash.reduce((int) (a >>> 32), arraySize)] &= ~(1L << a);
                 currNumBitsDeleted += 1;
             }
