@@ -19,7 +19,7 @@ public class DeleteBloomFilter implements Filter {
     private final int arraySize;
     private long[] data;
     // the threshold to determine if an element is in the bloom filter
-    private final int existThreshold;
+    private final double existThreshold;
     // The number of bits to set on insert
     private int numBitsToSetOnInsert;
     // The number of reset when delete
@@ -62,14 +62,14 @@ public class DeleteBloomFilter implements Filter {
     }
 
     public DeleteBloomFilter(long numElements, double bitsPerKey, int numHashFunctions,
-                             int existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete) {
+                             double existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete) {
         this(numElements, bitsPerKey, numHashFunctions,
                 existThreshold, numBitsToSetOnInsert, numBitsToResetOnDelete, Hash.randomSeed());
     }
 
     // constructor fixed seed for tests
     public DeleteBloomFilter(long numElements, double bitsPerKey, int numHashFunctions,
-                             int existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete,
+                             double existThreshold, int numBitsToSetOnInsert, int numBitsToResetOnDelete,
                              long seed) {
         numElements = Math.max(1, numElements);
         this.numHashFunctions = numHashFunctions;

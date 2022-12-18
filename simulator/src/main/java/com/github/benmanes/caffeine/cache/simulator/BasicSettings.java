@@ -78,7 +78,7 @@ public class BasicSettings {
   }
 
   public long maximumSize() {
-    return config().getLong("maximum-size");
+    return 100000000; // 100MB
   }
 
   public TraceSettings trace() {

@@ -54,17 +54,21 @@ public final class MeClockPolicyAdaptive implements Policy {
   // The number of reset when delete
   int numBitsToResetOnDelete;
   // the threshold to determine if an element is in the bloom filter
-  int existThreshold;
+  double existThreshold;
   int minExistThreshold;
   int maxExistThreshold;
 
   // Predicates for types of entries
   Predicate<Integer> recent;
   Predicate<Integer> frequent;
+  Predicate<Integer> exist;
 
   long currentSize;
+  long currNumElements = 0L;
 
   int numHashFunctions;
+
+  long totalcounter = 0;
 
   public MeClockPolicyAdaptive(Config config, Set<Characteristic> characteristics,
                                Admission admission, EvictionPolicy policy) {
@@ -78,22 +82,23 @@ public final class MeClockPolicyAdaptive implements Policy {
     this.sentinel = new Node();
     this.policy = policy;
     // set initial parameters
-    this.numBitsToSetOnInsert = settings.numHashFunctions() / 4;
-    this.numBitsToResetOnDelete = settings.numHashFunctions() / 4;
+    this.numBitsToSetOnInsert = 4; // settings.numHashFunctions() / 4;
+    this.numBitsToResetOnDelete = 4; // settings.numHashFunctions() / 4;
 
     this.existThreshold = 4; // settings.numHashFunctions() / 2;
     // [4]
-    this.minExistThreshold = existThreshold - existThreshold / 8;
-    this.maxExistThreshold = settings.numHashFunctions() - settings.numHashFunctions() / 8;
+    this.minExistThreshold = 4;
+    this.maxExistThreshold = 12; // to enable clearing the bloom filter
 
     // set predicates
     // for exists we give some slack on the left side to handle deletions
     // [2-6]
 //    recent = i -> (i >= existThreshold - existThreshold / 8 && i < 2*existThreshold - existThreshold / 8);
-    recent = i -> (i >= 2 && i <= 6);
+    recent = i -> (i <= 8 && i >= 4);
     // [6-16]
 //    frequent = i -> (i >= 2*existThreshold - existThreshold / 8);
-    frequent = i -> (i > 6);
+    frequent = i -> (i > 8);
+    exist = i -> (i >= this.existThreshold);
 
     this.numHashFunctions = settings.numHashFunctions();
 
@@ -121,6 +126,7 @@ public final class MeClockPolicyAdaptive implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    totalcounter += 1;
     final int weight = weighted ? event.weight() : 1;
     final long key = event.key();
     Node old = data.get(key);
@@ -128,24 +134,23 @@ public final class MeClockPolicyAdaptive implements Policy {
     if (old == null) { // miss - add to cache
       int numBitsToSet = this.numBitsToSetOnInsert;
       // check if the item was seen in history
-//      int numBitsSetInHistory = history.numBitsSet(key);
-//      if (numBitsSetInHistory > 0) {
-//        // this entry was referenced only once in the history (equivalent to hit on B1)
-//        // so we will insert it with more bits this time
-//        if (recent.test(numBitsSetInHistory)) {
-//          // next time we insert a new item we haven't seen want to evict more recent items
-//          numBitsToSet = 8;
-//          // remove the threshold to be kept so that more recent items will be kept
-//          existThreshold = Math.max(existThreshold - 4, minExistThreshold);
-//          System.out.println("1 - Set exist threshold to " + existThreshold);
-//        } else if (frequent.test(numBitsSetInHistory)) {
-//          // increase the threshold to stay in cache so that we will keep more frequent items
-//          existThreshold = Math.min(existThreshold + 4, maxExistThreshold);
-//          System.out.println("2 - Set exist threshold to " + existThreshold);
-//        }
-//        // in any case remove from history since it is promoted
-//        history.delete(key);
-//      }
+      int numBitsSetInHistory = history.numBitsSet(key);
+      if (numBitsSetInHistory > 0) {
+        // this entry was referenced only once in the history (equivalent to hit on B1)
+        // so we will insert it with more bits this time
+        if (recent.test(numBitsSetInHistory)) {
+          // next time we insert a new item we haven't seen want to evict more recent items
+          numBitsToSet = numBitsSetInHistory;
+          // remove the threshold to be kept so that more recent items will be kept
+          existThreshold = Math.max(existThreshold - 0.001, minExistThreshold);
+          // System.out.println("1 - Set exist threshold to " + existThreshold);
+        } else if (frequent.test(numBitsSetInHistory)) {
+          numBitsToSet = numBitsSetInHistory;
+          // increase the threshold to stay in cache so that we will keep more frequent items
+          existThreshold = Math.min(existThreshold + 0.001, maxExistThreshold);
+          // System.out.println("2 - Set exist threshold to " + existThreshold);
+        }
+      }
       policyStats.recordWeightedMiss(weight);
       if (weight > maximumSize) {
         policyStats.recordOperation();
@@ -153,6 +158,7 @@ public final class MeClockPolicyAdaptive implements Policy {
       }
       Node node = new Node(key, weight, sentinel);
       // add to the bloom filter to keep track of recency
+      currNumElements += 1;
       doorkeeper.add(key, numBitsToSet);
       data.put(key, node);
       currentSize += node.weight;
@@ -185,36 +191,55 @@ public final class MeClockPolicyAdaptive implements Policy {
   /** Evicts while the map exceeds the maximum capacity. */
   private void evict(Node candidate) {
     if (currentSize > maximumSize) {
-      Node first = policy.findVictim(sentinel, policyStats);
-      int minNumBitsSet =  doorkeeper.numBitsSet(first.key);
+      Long numElementsScanned = 0L;
       Node victim = policy.findVictim(sentinel, policyStats);
+      // check which type of element should be evicted
+      Predicate pred = exist;
+      int numBitsSetInHistory = history.numBitsSet(candidate.key);
+      if (numBitsSetInHistory > 0) {
+        // if the element was recent look to replace frequent items
+        if (recent.test(numBitsSetInHistory)) {
+          pred = frequent;
+        } else {
+          pred = recent;
+        }
+      }
+      Boolean deleted = false;
       while (currentSize > maximumSize) {
         if (candidate.weight > maximumSize) {
           doorkeeper.delete(candidate.key);
+          currNumElements -= 1;
           evictEntry(candidate);
           continue;
         }
 
         int victimNumBits = doorkeeper.numBitsSet(victim.key);
         // if the condition is met the element should be recycled
-        if (victimNumBits >= this.existThreshold) {
+        if (pred.test(victimNumBits)) {
           // add to list of elements to delete
           victim.moveToTail();
-          minNumBitsSet = Math.min(minNumBitsSet, victimNumBits);
         } else { // replace
           // add to history bloom filter with the same number of bits
           history.add(victim.key, victimNumBits);
           // remove from the bloom filter
           doorkeeper.delete(victim.key, victimNumBits);
+          currNumElements -= 1;
           evictEntry(victim);
+          deleted = true;
+        }
+        numElementsScanned += 1;
+        // if we finished full pass
+        if (numElementsScanned > currNumElements) {
+          if (!deleted) {
+            this.existThreshold += 1;
+            pred = exist;
+          }
+          deleted = false;
+          numElementsScanned = 0L;
+          // increase exist threshold to ensure eviction
+          // printBloomFilterStatus();
         }
         victim = policy.findVictim(sentinel, policyStats);
-        // if we finished full pass
-        if (victim.key == first.key) {
-          // set to +1 to enforce eviction
-          this.existThreshold = minNumBitsSet + 1;
-          System.out.println("Force increase exist threshold to " + this.existThreshold);
-        }
       }
     } else {
       policyStats.recordOperation();

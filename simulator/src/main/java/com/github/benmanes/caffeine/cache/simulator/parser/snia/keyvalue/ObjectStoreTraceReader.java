@@ -54,6 +54,8 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
         return lines()
                 .map(line -> line.split(" "))
                 .filter(array -> array[1].equals("REST.GET.OBJECT"))
+                //.skip(2200000)
+                .limit(400000)
                 .flatMap(array -> {
                     long key = new BigInteger(array[2], 16).longValue();
                     long objSize = Long.parseLong(array[3]);
@@ -67,6 +69,13 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
                     // read is inclusive so adding +1
                     // Note that the saturated cast in the original code caused issue since some ranges are larger than 2GB
                     long weight = end - start + 1;
+                    if (weight <= 0) {
+                        return Stream.empty();
+                    }
+
+                    if (weight > objSize) {
+                        return Stream.empty();
+                    }
 
                     // if the object size is less than the block size then count it as weight that is being read
                     // assuming the block size is always smaller than MAX INT
