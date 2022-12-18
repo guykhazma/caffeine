@@ -142,12 +142,12 @@ public final class MeClockPolicyAdaptive implements Policy {
           // next time we insert a new item we haven't seen want to evict more recent items
           numBitsToSet = numBitsSetInHistory;
           // remove the threshold to be kept so that more recent items will be kept
-          existThreshold = Math.max(existThreshold - 0.001, minExistThreshold);
+          existThreshold = Math.max(existThreshold - 1, minExistThreshold);
           // System.out.println("1 - Set exist threshold to " + existThreshold);
         } else if (frequent.test(numBitsSetInHistory)) {
           numBitsToSet = numBitsSetInHistory;
           // increase the threshold to stay in cache so that we will keep more frequent items
-          existThreshold = Math.min(existThreshold + 0.001, maxExistThreshold);
+          existThreshold = Math.min(existThreshold + 1, maxExistThreshold);
           // System.out.println("2 - Set exist threshold to " + existThreshold);
         }
       }

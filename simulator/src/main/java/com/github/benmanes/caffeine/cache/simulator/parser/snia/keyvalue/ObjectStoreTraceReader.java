@@ -55,7 +55,7 @@ public final class ObjectStoreTraceReader extends TextTraceReader {
                 .map(line -> line.split(" "))
                 .filter(array -> array[1].equals("REST.GET.OBJECT"))
                 //.skip(2200000)
-                .limit(400000)
+                // .limit(400000)
                 .flatMap(array -> {
                     long key = new BigInteger(array[2], 16).longValue();
                     long objSize = Long.parseLong(array[3]);
